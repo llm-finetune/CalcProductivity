@@ -1,0 +1,117 @@
+Sub GenerateProductiveHoursReport()
+    Dim wsInput As Worksheet, wsOutput As Worksheet
+    Dim lastRow As Long, outputRow As Long
+    Dim empDict As Object
+    Dim i As Long
+    Dim empNum As String, empDate As Date, empTime As Date, eventType As String
+    Dim key As Variant ' Ensure key is declared as Variant
+    Dim entryTimes As Object
+    Dim exitTimes As Object
+    Dim totalHours As Double
+    
+    ' Set input worksheet (Assumes data is in the first sheet)
+    Set wsInput = ThisWorkbook.Sheets(1)
+    
+    ' Create new worksheet for output
+    On Error Resume Next
+    Set wsOutput = ThisWorkbook.Sheets("Productive Hours Report")
+    If wsOutput Is Nothing Then
+        Set wsOutput = ThisWorkbook.Sheets.Add
+        wsOutput.Name = "Productive Hours Report"
+    End If
+    On Error GoTo 0
+    
+    ' Clear previous data in output sheet
+    wsOutput.Cells.Clear
+    
+    ' Set headers for output sheet
+    wsOutput.Cells(1, 1).Value = "Employee Number"
+    wsOutput.Cells(1, 2).Value = "Date"
+    wsOutput.Cells(1, 3).Value = "Total Hours Spent on Floor"
+    
+    ' Find last row of input data
+    lastRow = wsInput.Cells(wsInput.Rows.Count, 1).End(xlUp).Row
+    
+    ' Create dictionary to store entry and exit times
+    Set empDict = CreateObject("Scripting.Dictionary")
+    
+    ' Loop through input data
+    For i = 2 To lastRow
+        empNum = wsInput.Cells(i, 1).Value
+        empDate = wsInput.Cells(i, 2).Value
+        empTime = wsInput.Cells(i, 3).Value
+        eventType = wsInput.Cells(i, 4).Value
+        
+        ' Unique key based on Employee Number and Date
+        key = empNum & "_" & Format(empDate, "YYYY-MM-DD")
+        
+        ' Initialize dictionary if key doesn't exist
+        If Not empDict.exists(key) Then
+            Set entryTimes = CreateObject("System.Collections.ArrayList")
+            Set exitTimes = CreateObject("System.Collections.ArrayList")
+            empDict.Add key, Array(entryTimes, exitTimes)
+        Else
+            Dim tempArray As Variant
+            tempArray = empDict(key)
+            Set entryTimes = tempArray(0)
+            Set exitTimes = tempArray(1)
+        End If
+        
+        ' Store entry and exit times
+        If eventType = "User Granted Entry" Then
+            entryTimes.Add empTime
+        ElseIf eventType = "User Granted Exit" Then
+            exitTimes.Add empTime
+        End If
+        
+        ' Update dictionary
+        empDict(key) = Array(entryTimes, exitTimes)
+    Next i
+    
+    ' Write computed results to output sheet
+    outputRow = 2
+    Dim j As Integer
+    Dim sortedEntryTimes As Object, sortedExitTimes As Object
+    
+    For Each key In empDict.keys ' Key must be Variant
+        empNum = Split(key, "_")(0)
+        empDate = Split(key, "_")(1)
+        totalHours = 0
+        
+        ' Retrieve stored lists of entry and exit times
+        tempArray = empDict(key)
+        Set entryTimes = tempArray(0)
+        Set exitTimes = tempArray(1)
+        
+        ' Sort the entry and exit times
+        Set sortedEntryTimes = CreateObject("System.Collections.ArrayList")
+        Set sortedExitTimes = CreateObject("System.Collections.ArrayList")
+        
+        For j = 0 To entryTimes.Count - 1
+            sortedEntryTimes.Add entryTimes(j)
+        Next j
+        For j = 0 To exitTimes.Count - 1
+            sortedExitTimes.Add exitTimes(j)
+        Next j
+        
+        sortedEntryTimes.Sort
+        sortedExitTimes.Sort
+        
+        ' Calculate total time spent on floor
+        For j = 0 To Application.Min(sortedEntryTimes.Count, sortedExitTimes.Count) - 1
+            totalHours = totalHours + (sortedExitTimes(j) - sortedEntryTimes(j)) * 24
+        Next j
+        
+        ' Write to output sheet
+        wsOutput.Cells(outputRow, 1).Value = empNum
+        wsOutput.Cells(outputRow, 2).Value = empDate
+        wsOutput.Cells(outputRow, 3).Value = Round(totalHours, 2) ' Rounding to 2 decimal places
+        
+        outputRow = outputRow + 1
+    Next key
+    
+    ' Autofit columns for better readability
+    wsOutput.Columns("A:C").AutoFit
+    
+    MsgBox "Report generated successfully!", vbInformation, "Success"
+End Sub
